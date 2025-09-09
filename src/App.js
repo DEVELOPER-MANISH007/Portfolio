@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import emailjs from '@emailjs/browser';
 import { motion } from 'framer-motion';
 import Tilt from 'react-parallax-tilt';
 import { gsap } from 'gsap';
@@ -653,6 +654,86 @@ function ProjectsSection() {
 }
 
 function ContactSection() {
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [message, setMessage] = useState('');
+  const [isSending, setIsSending] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
+
+  const serviceId = process.env.REACT_APP_EMAILJS_SERVICE_ID || 'YOUR_SERVICE_ID';
+  const templateId = process.env.REACT_APP_EMAILJS_TEMPLATE_ID || 'YOUR_TEMPLATE_ID';
+  const publicKey = process.env.REACT_APP_EMAILJS_PUBLIC_KEY || 'YOUR_PUBLIC_KEY';
+  const toEmail = process.env.REACT_APP_CONTACT_TO || 'manish8755026341@gmail.com';
+
+  // Initialize EmailJS once with public key (safer across versions)
+  useEffect(() => {
+    if (publicKey && !['YOUR_PUBLIC_KEY', ''].includes(publicKey)) {
+      try { emailjs.init({ publicKey }); } catch (e) { /* noop */ }
+    }
+  }, [publicKey]);
+
+  const validate = () => {
+    if (!name.trim() || !email.trim() || !message.trim()) {
+      setErrorMessage('Please fill out all fields.');
+      return false;
+    }
+    const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+    if (!emailOk) {
+      setErrorMessage('Please enter a valid email address.');
+      return false;
+    }
+    return true;
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setSuccessMessage('');
+    setErrorMessage('');
+    if (!validate()) return;
+
+    // Guard against missing configuration
+    const isMissingConfig = [serviceId, templateId, publicKey].some((v) => !v || v.startsWith('YOUR_'));
+    if (isMissingConfig) {
+      setErrorMessage('Email is not configured. Set SERVICE_ID, TEMPLATE_ID, and PUBLIC_KEY.');
+      return;
+    }
+    // Guard against missing recipient
+    const recipient = (toEmail || '').trim();
+    if (!recipient || !recipient.includes('@')) {
+      setErrorMessage('Recipient email is missing. Set REACT_APP_CONTACT_TO or update your template “To” field.');
+      return;
+    }
+    setIsSending(true);
+    try {
+      const templateParams = {
+        from_name: name,
+        from_email: email,
+        reply_to: email,
+        to_email: recipient,
+        to: recipient,
+        message,
+      };
+      // Works whether init() was called or not
+      await emailjs.send(serviceId, templateId, templateParams, publicKey);
+      setSuccessMessage('Thanks! Your message has been sent.');
+      setName('');
+      setEmail('');
+      setMessage('');
+    } catch (err) {
+      // Surface readable reason if available
+      const reason = (err && (err.text || err.message)) ? String(err.text || err.message) : 'Unknown error';
+      console.error('EmailJS send failed:', err);
+      if (/recipient/i.test(reason) && /empty/i.test(reason)) {
+        setErrorMessage('Failed to send: Recipient is empty. In EmailJS template, set the “To” field to your email or {{to_email}} and ensure REACT_APP_CONTACT_TO is set.');
+      } else {
+        setErrorMessage(`Failed to send: ${reason}`);
+      }
+    } finally {
+      setIsSending(false);
+    }
+  };
+
   return (
     <motion.section
       initial={{ opacity: 0, y: 20 }}
@@ -662,11 +743,65 @@ function ContactSection() {
       className="py-12"
     >
       <h3 className="text-2xl font-semibold text-white mb-6">Contact</h3>
-      <div className="space-y-2 text-slate-200">
-        <p>Email: <a href="mailto:manish8755026341@gmail.com" className="underline">manish8755026341@gmail.com</a></p>
-        <p>Phone: 7456861606</p>
-        <p>GitHub: <a href="https://github.com/DEVELOPER-MANISH007" className="underline">github.com/DEVELOPER-MANISH007</a></p>
-        <p>LinkedIn: <a href="https://www.linkedin.com/in/mitansh-kumar-aaabb333b" className="underline">linkedin.com/in/mitansh-kumar</a></p>
+
+      <div className="grid md:grid-cols-2 gap-8">
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-slate-200 mb-1">Name</label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full rounded-md bg-white/10 border border-white/15 px-3 py-2 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              placeholder="Your name"
+            />
+          </div>
+          <div>
+            <label className="block text-slate-200 mb-1">Email</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full rounded-md bg-white/10 border border-white/15 px-3 py-2 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              placeholder="you@example.com"
+            />
+          </div>
+          <div>
+            <label className="block text-slate-200 mb-1">Message</label>
+            <textarea
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              rows={5}
+              className="w-full rounded-md bg-white/10 border border-white/15 px-3 py-2 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              placeholder="Write your message..."
+            />
+          </div>
+
+          {errorMessage && (
+            <div className="text-red-400 text-sm">{errorMessage}</div>
+          )}
+          {successMessage && (
+            <div className="text-emerald-400 text-sm">{successMessage}</div>
+          )}
+
+          <button
+            type="submit"
+            disabled={isSending}
+            className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2 text-white hover:bg-indigo-500 disabled:opacity-60"
+          >
+            {isSending ? 'Sending…' : 'Send Message'}
+          </button>
+        </form>
+
+        <div className="space-y-2 text-slate-200">
+          <p>Email: <a href="mailto:manish8755026341@gmail.com" className="underline">manish8755026341@gmail.com</a></p>
+          <p>Phone: 7456861606</p>
+          <p>GitHub: <a href="https://github.com/DEVELOPER-MANISH007" className="underline">github.com/DEVELOPER-MANISH007</a></p>
+          <p>LinkedIn: <a href="https://www.linkedin.com/in/mitansh-kumar-aaabb333b" className="underline">linkedin.com/in/mitansh-kumar</a></p>
+          <div className="text-xs text-slate-400 pt-2">
+           
+          </div>
+        </div>
       </div>
     </motion.section>
   );
